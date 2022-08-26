@@ -22,8 +22,8 @@ function publicAjax(url, data, success, beforeSend, complete) {
 	});
 };
 
-var app_serect = "bb4c776019f9bf152d82617d463a1537";
-var appId = "wx73c2d36878ef2aa7";
+var app_serect = "";
+var appId = "";
 
 var DataLimit = "10";
 
