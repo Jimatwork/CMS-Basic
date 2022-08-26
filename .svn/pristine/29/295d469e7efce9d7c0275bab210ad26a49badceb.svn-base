@@ -12,8 +12,8 @@ import cn.jpush.api.push.model.notification.Notification;
 
 @SuppressWarnings("deprecation")
 public class JpushUtil {
-	private static final String APPKEY = "4eab229f125ba1d31d792b71";  //必填，例如466f7032ac604e02fb7bda89 
-	private static final String MSECRET = "aad6bddfc4cd9f142d07ea94";  //必填，每个应用都对应一个masterSecret
+	private static final String APPKEY = "";  //必填，例如466f7032ac604e02fb7bda89 
+	private static final String MSECRET = "";  //必填，每个应用都对应一个masterSecret
 	private static JPushClient jpushClient;
 	static{
 		 jpushClient = new JPushClient(MSECRET, APPKEY, 3);
