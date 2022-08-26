@@ -1,0 +1,188 @@
+(function($) {
+	$.getUrlParam = function(name) {
+		var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)");
+		var r = window.location.search.substr(1).match(reg);
+		if (r != null) return unescape(r[2]);
+		return null;
+	};
+	navigationId = $.getUrlParam('id');
+
+
+	var skipId = sessionStorage.getItem('navigationId');
+
+	if (skipId == 1) {
+		menuitem = "getHeadLines"; //头条
+	} else if (skipId == 2) {
+		menuitem = "getHotColumnContent"; //热门
+	} else if (skipId == 3) {
+		menuitem = "queryFindLisAltert"; //发现
+	} else if (skipId == 4) {
+		menuitem = "getSatCon"; //活动
+	} else {
+		menuitem = "getSatCon"; //前沿
+	}
+	;
+
+	//头部子菜单 热门 发现 头条
+	publicAjax("getAllColumns", "", function(data) {
+		var datas = data.list;
+		var htmls = "";
+		for (var i = 0; i < datas.length; i++) {
+			htmls += '<li><a class="skipId" href="channel.html?id=' + datas[i].id + '" target="_blank">' + datas[i].colName + '</a></li>';
+		}
+		;
+
+		$('.subtopic').html(htmls);
+	});
+
+	//头部子菜单  前沿
+	publicAjax("getColumn", {
+		"tag" : 0
+	}, function(data) {
+		//console.log("前沿——————————————————"+JSON.stringify(data))
+		var datas = data.list;
+		var htmls = "";
+		for (var i = 0; i < datas.length; i++) {
+			htmls += '<li><a class="skipId" href="channel.html?id=' + datas[i].id + '" target="_blank">' + datas[i].colName + '</a></li>';
+		}
+		;
+
+		$('.leading_edge').html(htmls);
+	}, 1);
+
+	//头部子菜单 活动
+	publicAjax("getColumn", {
+		"tag" : 1
+	}, function(data) {
+		//console.log("活动——————————————————"+JSON.stringify(data))
+		var datas = data.list;
+		var htmls = "";
+		for (var i = 0; i < datas.length; i++) {
+			htmls += '<li><a class="skipId" href="channel.html?id=' + datas[i].id + '" target="_blank">' + datas[i].colName + '</a></li>';
+		}
+		;
+
+		$('.activity').html(htmls);
+	}, 1);
+
+	//数据请求
+	navigationId = navigationId.replace("'", "");
+	navigationId = navigationId.replace("'", "");
+
+	if (skipId > 0 && skipId < 4) {
+		publicAjax("getColContentById", {
+			"id" : navigationId,
+			"appUserId" : ""
+		}, function(data) {
+			if (data.success) {
+				showData(data);
+			}
+		});
+	} else {
+		publicAjax("getSatConById", {
+			"id" : navigationId,
+			"appUserId" : ""
+		}, function(data) {
+			if (data.success) {
+				showData(data);
+			}
+		}, 1)
+	}
+	;
+
+	//展示数据
+	function showData(data) {
+		var datas = data.list[0];
+		var tests = sessionStorage.getItem('tests'),
+			colNames;
+		var s = datas.colName;
+		if (tests == "" || tests == null) {
+			colNames = datas.colName;
+		} else {
+			colNames = tests + " " + s.substr(3, 5);
+		}
+		;
+		//console.log("HTML~~~~~~~~~~~"+datas.conHtml)
+		$('title').html(datas.conTitle);
+		$('.t-h1').html(datas.conTitle);
+		$('.userName').html(datas.userName);
+		$('.article-time').html(times(datas.createDate));
+		$('.article-share').html("阅读  " + datas.playCount);
+		$('.article-pl').html("评论  " + datas.exaCount);
+		$('.column-link').html(colNames);
+		$('.article-imgs').attr('src', datas.conImg);
+		$('.article-imgs').attr('alt', datas.conTitle);
+		$('.active_html').html(datas.conHtml);
+		$('.num').html(datas.praiseCount); //点赞
+
+		//		右边
+		$('.author_face_img').attr('src', datas.userImg);
+		$('.author_name_a').html(datas.userName);
+	}
+	;
+
+	//阅读推荐
+	publicAjax("getSatConByTop", {
+		"type" : 0
+	}, function(data) {
+		console.log(JSON.stringify(data))
+		if (data.success) {
+			var datas = data.list;
+			var htmlse = "";
+			for (var l = 0; l < datas.length; l++) {
+
+				htmlse += recommendDa(datas, l);
+			}
+			;
+
+			$("#recommend").html(htmlse);
+		}
+	}, 1);
+
+
+	//头条
+	publicAjax("getTopSatContent", {
+		"type" : 0,
+		"tag" : 5,
+		"hot" : 2
+	}, function(data) {
+		//console.log("头条~~~~~~~~~~~~~~~~~"+JSON.stringify(data))
+		if (data.success) {
+			var datas = data.list;
+			var htmlse = "";
+			for (var l = 0; l < datas.length; l++) {
+
+				htmlse += recommendDa(datas, l);
+			}
+			;
+
+			$("#headline").html(htmlse);
+		}
+	}, 1);
+
+	//特别报导
+	publicAjax("getTopSatContent", {
+		"type" : 0,
+		"tag" : 5,
+		"hot" : 1
+	}, function(data) {
+		//console.log("特别报导~~~~~~~~~~~~~~~~~"+JSON.stringify(data))
+		if (data.success) {
+			var datas = data.list;
+			var htmlse = "";
+			for (var l = 0; l < datas.length; l++) {
+
+				htmlse += recommendDa(datas, l);
+			}
+			;
+
+			$("#specialReport").html(htmlse);
+		}
+	}, 1);
+
+	//上广告	
+	advertising($('.silder-main'));
+
+	//右广告	
+	rightAdvertising($('#rigthAdvertising'));
+})($)

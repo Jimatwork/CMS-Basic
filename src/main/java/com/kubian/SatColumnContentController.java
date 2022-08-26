@@ -1,0 +1,1072 @@
+package com.kubian;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Random;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.kubian.mode.AppUser;
+import com.kubian.mode.Attention;
+import com.kubian.mode.BackUpColumnContent;
+import com.kubian.mode.ColumnContent;
+import com.kubian.mode.Columns;
+import com.kubian.mode.SatColumn;
+import com.kubian.mode.SatColumnContent;
+import com.kubian.mode.Thumbsup;
+import com.kubian.mode.User;
+import com.kubian.mode.dao.AppUserDao;
+import com.kubian.mode.dao.BackUpColumnContentDao;
+import com.kubian.mode.dao.ColumnContentDao;
+import com.kubian.mode.dao.ColumnsDao;
+import com.kubian.mode.dao.SatColumnContentDao;
+import com.kubian.mode.dao.SatColumnDao;
+import com.kubian.mode.dao.UserDao;
+import com.kubian.mode.util.ImgUtil;
+import com.kubian.mode.util.JpushUtil;
+import com.kubian.mode.util.MyTools;
+import com.kubian.mode.util.ReturnMsg;
+
+import cn.jpush.api.push.PushResult;
+
+/**
+ * 前言和活动的内容操作 ClassName: SatColumnContentController
+ * 
+ * @Description: TODO
+ * @author HD
+ * @date 2018年6月22日
+ */
+@RestController
+public class SatColumnContentController {
+	@Value("${web.upload.path}")
+	private String uploadPath;
+	@Value("${web.img.path}")
+	private String webImgPath;
+	@Value("${web.img.path1}")
+	private String webImgPath1;
+	@Autowired
+	private SatColumnContentDao satColumnContentDao;
+	@Autowired
+	private UserDao userDao;
+	@Autowired
+	private SatColumnDao satColumnDao;
+	@Autowired
+	private BackUpColumnContentDao backUpColumnContentDao;
+	@Autowired
+	private ColumnContentDao columnContentDao;
+	@Autowired
+	private AppUserDao appUserDao;
+	@Autowired
+	private ColumnsDao columnsDao;
+
+	/**
+	 * 获取对应的栏目下面的内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            state 状态
+	 * @param @param
+	 *            colId 栏目id
+	 * @param @param
+	 *            type
+	 * @param @param
+	 *            page
+	 * @param @param
+	 *            size
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月21日
+	 */
+	@RequestMapping(value = "/getSatCon")
+	public Object getSatCon(String state, Long colId, String search_str, String type, Integer page, Integer size) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		if (!"1".equals(state)) {
+			state = "0";
+		}
+		User user = userDao.findByUserNameAndUserRole("admin", 5);
+		// 分页操作
+		// Sort sort = new Sort(Sort.Direction.DESC, "id");
+		PageRequest pageable = new PageRequest(page, size);
+		if (!MyTools.isEmpty(search_str)) {
+			List<SatColumnContent> scc = satColumnContentDao.findByConTitleAndType("%" + search_str + "%", type, state,
+					pageable);
+			if (scc != null && scc.size() > 0) {
+				for (SatColumnContent satColumnContent : scc) {
+					satColumnContent.setUserName(user.getNickName());
+					satColumnContent.setUserImg(user.getImg());
+				}
+			}
+			returnMsg.setList(scc);
+			returnMsg.setSuccess(true);
+			returnMsg.setMsg("获取成功！");
+			scc = satColumnContentDao.findByConTitleAndType("%" + search_str + "%", type, state);
+			returnMsg.setTotalSize(scc.size());
+			return returnMsg;
+		}
+
+		Sort sort = new Sort(Sort.Direction.DESC, "createDate");
+		PageRequest pageable2 = new PageRequest(page, size, sort);
+		int tag = Integer.parseInt(type);
+		SatColumn satColumn = null;
+		if (!MyTools.isEmpty(colId)) {
+			satColumn = satColumnDao.findByIdAndTag(colId, tag);
+		}
+
+		Page<SatColumnContent> scc = null;
+		if (MyTools.isEmpty(colId)) {
+			// 不根据栏目获取数据
+			if ("1".equals(state)) {
+				scc = satColumnContentDao.findByStateAndType(state, type, pageable2); // 根据栏目id状态和type分页获取数据
+			} else {
+				scc = satColumnContentDao.findByType(type, pageable2);
+			}
+
+		} else {
+			// 根据栏目获取数据
+			if ("1".equals(state)) {
+				scc = satColumnContentDao.findByColIdAndStateAndType(colId, state, type, pageable2); // 根据栏目id状态和type分页获取数据
+			} else {
+				scc = satColumnContentDao.findByColIdAndType(colId, type, pageable2);
+			}
+		}
+		if (scc != null && scc.getContent().size() > 0) {
+			for (SatColumnContent satColumnContent : scc) {
+				satColumnContent.setUserName(user.getNickName());
+				satColumnContent.setUserImg(user.getImg());
+				if (!MyTools.isEmpty(satColumn)) {
+					if (0 == satColumn.getTag()) {
+						satColumnContent.setColName("前沿 - " + satColumn.getColName());
+					}
+					if (1 == satColumn.getTag()) {
+						satColumnContent.setColName("活动 - " + satColumn.getColName());
+					}
+				}
+
+			}
+		}
+		returnMsg.setList(scc.getContent());
+		returnMsg.setMsg("获取成功！");
+		returnMsg.setSuccess(true);
+		returnMsg.setTotalSize(scc.getTotalElements());
+		return returnMsg;
+	}
+
+	/**
+	 * 添加 修改内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            satColumnContent
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月22日
+	 */
+	@RequestMapping(value = "/addSatCon")
+	public Object addSatCon(@ModelAttribute SatColumnContent satColumnContent) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			if (!MyTools.isEmpty(satColumnContent.getConImg())) {
+				// 获取图片文件的名称
+				String suffix1 = satColumnContent.getConImg().substring(
+						satColumnContent.getConImg().lastIndexOf("/") + 1,
+						satColumnContent.getConImg().lastIndexOf("."));
+				if (!"slider".equals(suffix1)) {
+					// 按比例缩小图片给移动端使用
+					String path = satColumnContent.getConImg();
+					// 获取当前图片的部分路径
+					if (path.indexOf("KuBianImg/") != -1) {
+						String imgPath = path.substring(path.indexOf("KuBianImg/") + 10, path.lastIndexOf("/"));
+						String imgPath1 = uploadPath + imgPath;
+						String path1 = path.substring(path.indexOf("KuBianImg/") + 10);
+						path = uploadPath + path1;
+						String fname = System.currentTimeMillis() + ".jpg";
+						File file = new File(path);
+						if (file.exists()) {
+							ImgUtil.resizeImg(file, imgPath1 + "/" + fname, 200, 200);
+							String prImg = webImgPath + imgPath + "/" + fname;
+							satColumnContent.setConImg1(prImg);
+						} else {
+							satColumnContent.setConImg1(webImgPath1 + "/slider.png");
+						}
+						// 按比例缩小
+
+					} else {
+						satColumnContent.setConImg1(webImgPath1 + "/slider.png");
+					}
+
+				}
+
+			}
+			if (satColumnContent.getId() != null) {
+
+				// id不为空 是修改
+				SatColumnContent satColumnContent2 = satColumnContentDao.findById(satColumnContent.getId());
+				if (!MyTools.isEmpty(satColumnContent2)) {
+					if (!MyTools.isEmpty(satColumnContent.getPraiseCount()) && satColumnContent.getPraiseCount() == 0) {
+						satColumnContent.setPraiseCount(satColumnContent2.getPraiseCount());
+					}
+					// if (!MyTools.isEmpty(satColumnContent.gethTop()) &&
+					// satColumnContent.gethTop() == 0) {
+					// satColumnContent.sethTop(satColumnContent2.gethTop());
+					// }
+					if (!MyTools.isEmpty(satColumnContent.getDislikeCount())
+							&& satColumnContent.getDislikeCount() == 0) {
+						satColumnContent.setDislikeCount(satColumnContent2.getDislikeCount());
+					}
+					if (!MyTools.isEmpty(satColumnContent.getPlayCount()) && satColumnContent.getPlayCount() == 0) {
+						satColumnContent.setPlayCount(satColumnContent2.getPlayCount());
+					}
+					if (!MyTools.isEmpty(satColumnContent.getExaCount()) && satColumnContent.getExaCount() == 0) {
+						satColumnContent.setExaCount(satColumnContent2.getExaCount());
+					}
+					// if (!MyTools.isEmpty(satColumnContent.getTop()) &&
+					// satColumnContent.getTop() == 0) {
+					// satColumnContent.setTop(satColumnContent2.getTop());
+					// }
+					if ("1".equals(satColumnContent.getState())) {
+						satColumnContent.setState(satColumnContent2.getState());
+					}
+					if ("0".equals(satColumnContent.getHot())) {
+						satColumnContent.setHot(satColumnContent2.getHot());
+					}
+					if ("0".equals(satColumnContent.getFollow())) {
+						satColumnContent.setFollow(satColumnContent2.getFollow());
+					}
+					MyTools.updateNotNullFieldForPatient(satColumnContent2, satColumnContent);
+					satColumnContent2.setMp3Name(null);
+					satColumnContentDao.save(satColumnContent2);
+
+					returnMsg.setSuccess(true);
+					returnMsg.setList(null);
+					returnMsg.setTotalSize(0);
+					returnMsg.setMsg("修改成功！");
+				}
+			} else {
+				String suffix = "";
+				// id为空 是添加
+				// User user = (User) session.getAttribute("wuser");
+				// if (!MyTools.isEmpty(user)) {
+				// satColumnContent.setUserId(user.getId());
+				// }
+				if (MyTools.isEmpty(satColumnContent.getPraiseCount())) {
+					satColumnContent.setPraiseCount(0);
+				}
+				// if (MyTools.isEmpty(satColumnContent.gethTop())) {
+				// satColumnContent.sethTop(0);
+				// }
+				if (MyTools.isEmpty(satColumnContent.getDislikeCount())) {
+					satColumnContent.setDislikeCount(0);
+				}
+				if (MyTools.isEmpty(satColumnContent.getPlayCount())) {
+					satColumnContent.setPlayCount(0);
+				}
+				if (MyTools.isEmpty(satColumnContent.getExaCount())) {
+					satColumnContent.setExaCount(0);
+				}
+				// if (MyTools.isEmpty(satColumnContent.getTop())) {
+				// satColumnContent.setTop(0);
+				// }
+				if (MyTools.isEmpty(satColumnContent.getState())) {
+					satColumnContent.setState("1");
+				}
+				if (MyTools.isEmpty(satColumnContent.getHot())) {
+					satColumnContent.setHot("0");
+				}
+				if (MyTools.isEmpty(satColumnContent.getFollow())) {
+					satColumnContent.setFollow("0");
+				}
+				if (!MyTools.isEmpty(satColumnContent.getConImg())) {
+					// satColumnContent.setConImg1(satColumnContent.getConImg());
+					// 获取图片文件的名称
+					suffix = satColumnContent.getConImg().substring(satColumnContent.getConImg().lastIndexOf("/") + 1,
+							satColumnContent.getConImg().lastIndexOf("."));
+				}
+				if (MyTools.isEmpty(satColumnContent.getConImg()) || "slider".equals(suffix)) {
+
+					satColumnContent.setConImg(webImgPath1 + "/slider.png");
+					satColumnContent.setConImg1(webImgPath1 + "/slider.png");
+
+				}
+				satColumnContentDao.save(satColumnContent);
+				String alias = "";
+				// 获取关注我(app用户)的人的id
+				// if (!MyTools.isEmpty(satColumnContent.getAppUserId())) {
+				// List<Attention> attentions = attentionDao
+				// .findByBeFollowedIdAndJudge(satColumnContent.getAppUserId(),
+				// 0);
+				//
+				// if (attentions != null && attentions.size() > 0) {
+				// // 有关注我的人
+				// for (Attention attention : attentions) {
+				// alias += attention.getFollowerId() + ",";
+				// }
+				//
+				// }
+				// }
+				// // 获取关注我(后台管理用户)的人的id
+				// if (!MyTools.isEmpty(satColumnContent.getUserId())) {
+				// List<Attention> attentions =
+				// attentionDao.findByBeFollowedIdAndJudge(satColumnContent.getUserId(),
+				// 1);
+				//
+				// if (attentions != null && attentions.size() > 0) {
+				// // 有关注我的人
+				// for (Attention attention : attentions) {
+				// alias += attention.getFollowerId() + ",";
+				// }
+				//
+				// }
+				// }
+				// if (!MyTools.isEmpty(alias)) {
+				// alias = alias.substring(0, alias.lastIndexOf(","));
+				// }
+				// System.out.println("alias:" + alias);
+				// if (!MyTools.isEmpty(alias)) {
+				// // 推送给关注我的人
+				// try {
+				// PushResult result = JpushUtil.sendMsg(alias,
+				// satColumnContent.getConHtml());
+				// } catch (Exception e) {
+				// System.out.println("推送异常！");
+				// e.printStackTrace();
+				// }
+				// // System.out.println(result.msg_id);
+				// }
+				returnMsg.setSuccess(true);
+				returnMsg.setList(null);
+				returnMsg.setTotalSize(0);
+				returnMsg.setMsg("添加成功！");
+			}
+		} catch (Exception e) {
+			returnMsg.setSuccess(false);
+			returnMsg.setMsg("异常错误！");
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 根据id删除前言和活动下面的内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            id
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月25日
+	 */
+	@RequestMapping(value = "/delSatColumnContent")
+	public Object delSatColumnContent(Long id) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			SatColumnContent columnContent2 = satColumnContentDao.findById(id);
+			if (!MyTools.isEmpty(columnContent2)) {
+				BackUpColumnContent backUpColumnContent = new BackUpColumnContent();
+				if (!MyTools.isEmpty(columnContent2.getRedact())) {
+					backUpColumnContent.setRedact(columnContent2.getRedact());
+				}
+				if (!MyTools.isEmpty(columnContent2.getAppUserId())) {
+					backUpColumnContent.setAppUserId(columnContent2.getAppUserId());
+				}
+				if (!MyTools.isEmpty(columnContent2.getBackgroundMusic())) {
+					backUpColumnContent.setBackgroundMusic(columnContent2.getBackgroundMusic());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConHtml())) {
+					backUpColumnContent.setConHtml(columnContent2.getConHtml());
+				}
+				if (!MyTools.isEmpty(columnContent2.getColName())) {
+					backUpColumnContent.setColName(columnContent2.getColName());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConImg())) {
+					backUpColumnContent.setConImg(columnContent2.getConImg());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConImg1())) {
+					backUpColumnContent.setConImg1(columnContent2.getConImg1());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConLivePath())) {
+					backUpColumnContent.setConLivePath(columnContent2.getConLivePath());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConRemark())) {
+					backUpColumnContent.setConRemark(columnContent2.getConRemark());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConTitle())) {
+					backUpColumnContent.setConTitle(columnContent2.getConTitle());
+				}
+				if (!MyTools.isEmpty(columnContent2.getConVideoPath())) {
+					backUpColumnContent.setConVideoPath(columnContent2.getConVideoPath());
+				}
+				if (!MyTools.isEmpty(columnContent2.getCreateDate())) {
+					backUpColumnContent.setCreateDate(columnContent2.getCreateDate());
+				}
+				if (!MyTools.isEmpty(columnContent2.getDislikeCount())) {
+					backUpColumnContent.setDislikeCount(columnContent2.getDislikeCount());
+				}
+				if (!MyTools.isEmpty(columnContent2.getExaCount())) {
+					backUpColumnContent.setExaCount(columnContent2.getExaCount());
+				}
+				if (!MyTools.isEmpty(columnContent2.getFollow())) {
+					backUpColumnContent.setFollow(columnContent2.getFollow());
+				}
+				if (!MyTools.isEmpty(columnContent2.getHot())) {
+					backUpColumnContent.setHot(columnContent2.getHot());
+				}
+				if (!MyTools.isEmpty(columnContent2.getImgUrl())) {
+					backUpColumnContent.setImgUrl(columnContent2.getImgUrl());
+				}
+				if (!MyTools.isEmpty(columnContent2.getIsFurther())) {
+					backUpColumnContent.setIsFurther(columnContent2.getIsFurther());
+				}
+				if (!MyTools.isEmpty(columnContent2.getLinkUrl())) {
+					backUpColumnContent.setLinkUrl(columnContent2.getLinkUrl());
+				}
+				if (!MyTools.isEmpty(columnContent2.getPlayCount())) {
+					backUpColumnContent.setPlayCount(columnContent2.getPlayCount());
+				}
+				if (!MyTools.isEmpty(columnContent2.getPraiseCount())) {
+					backUpColumnContent.setPraiseCount(columnContent2.getPraiseCount());
+				}
+				if (!MyTools.isEmpty(columnContent2.getSort())) {
+					backUpColumnContent.setSort(columnContent2.getSort());
+				}
+				if (!MyTools.isEmpty(columnContent2.getState())) {
+					backUpColumnContent.setState(columnContent2.getState());
+				}
+				if (!MyTools.isEmpty(columnContent2.getUserAdImg())) {
+					backUpColumnContent.setUserAdImg(columnContent2.getUserAdImg());
+				}
+				if (!MyTools.isEmpty(columnContent2.getUserId())) {
+					backUpColumnContent.setUserId(columnContent2.getUserId());
+				}
+				if (!MyTools.isEmpty(columnContent2.getMp3Name())) {
+					backUpColumnContent.setMp3Name(columnContent2.getMp3Name());
+				}
+				if (!MyTools.isEmpty(columnContent2.getTop())) {
+					backUpColumnContent.setTop(columnContent2.getTop());
+				}
+				if (!MyTools.isEmpty(columnContent2.gethTop())) {
+					backUpColumnContent.sethTop(columnContent2.gethTop());
+				}
+				if (!MyTools.isEmpty(columnContent2.gethHot())) {
+					backUpColumnContent.sethHot(columnContent2.gethHot());
+				}
+				backUpColumnContentDao.save(backUpColumnContent);
+			}
+			satColumnContentDao.delete(columnContent2);
+			returnMsg.setSuccess(true);
+			returnMsg.setList(null);
+			returnMsg.setTotalSize(0);
+			returnMsg.setMsg("操作成功！");
+		} catch (Exception e) {
+			returnMsg.setSuccess(false);
+			returnMsg.setMsg("异常错误！");
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 根据id设置内容为隐藏或显示
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            id 内容id
+	 * @param @param
+	 *            state 状态0.隐藏 1.显示
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月25日
+	 */
+	@RequestMapping(value = "/hideSatCon")
+	public Object hideSatCon(Long id) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			SatColumnContent satColumnContent = satColumnContentDao.findById(id);
+			if (!MyTools.isEmpty(satColumnContent)) {
+				if ("1".equals(satColumnContent.getState())) {
+					satColumnContent.setState("0");
+				} else if ("0".equals(satColumnContent.getState())) {
+					satColumnContent.setState("1");
+				}
+			}
+
+			satColumnContentDao.save(satColumnContent);
+			returnMsg.setSuccess(true);
+			returnMsg.setList(null);
+			returnMsg.setTotalSize(0);
+			returnMsg.setMsg("操作成功！");
+		} catch (Exception e) {
+			returnMsg.setSuccess(false);
+			returnMsg.setMsg("异常错误！");
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 根据内容id获取内容详情
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            id
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月25日
+	 */
+	@RequestMapping(value = "/getSatConById")
+	public Object getSatConById(Long id) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			User user = userDao.findByUserNameAndUserRole("admin", 5);
+			List<SatColumnContent> list = new ArrayList<SatColumnContent>();
+			SatColumnContent columnContent = satColumnContentDao.findById(id);
+			int playCount = columnContent.getPlayCount();
+			if (!MyTools.isEmpty(columnContent)) {
+				// 查询内容的作者名
+				columnContent.setUserName(user.getNickName());
+				columnContent.setUserImg(user.getImg());
+				if (!MyTools.isEmpty(columnContent)) {
+					int num = 0;
+					if ("1".equals(columnContent.getState()) || "2".equals(columnContent.getState())) {
+						num = new Random().nextInt(10) + 1;
+						columnContent.setPlayCount(columnContent.getPlayCount() + num);
+						satColumnContentDao.save(columnContent);
+					}
+
+				}
+
+				// 获取栏目信息
+				SatColumn column = satColumnDao.findById(columnContent.getColId());
+				String cName = "";
+				if (!MyTools.isEmpty(column)) {
+					if (0 == column.getTag()) {
+						columnContent.setColName("前沿 - " + column.getColName());
+					}
+					if (1 == column.getTag()) {
+						columnContent.setColName("活动 - " + column.getColName());
+					}
+				}
+
+				list.add(columnContent);
+				returnMsg.setList(list);
+				returnMsg.setMsg("获取成功");
+				returnMsg.setSuccess(true);
+				returnMsg.setTotalSize(playCount + 1);
+			} else {
+				returnMsg.setList(null);
+				returnMsg.setMsg("获取失败，没有这条数据！");
+				returnMsg.setSuccess(false);
+				returnMsg.setTotalSize(0);
+			}
+		} catch (Exception e) {
+			returnMsg.setList(null);
+			returnMsg.setMsg("异常错误！");
+			returnMsg.setSuccess(false);
+			returnMsg.setTotalSize(0);
+			e.printStackTrace();
+		}
+
+		return returnMsg;
+	}
+
+	/**
+	 * 设置推荐内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            id 内容id
+	 * @param @param
+	 *            top1
+	 * @param @param
+	 *            type 0.前沿 1.活动
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月27日
+	 */
+	@RequestMapping(value = "/setTopBySatId")
+	public Object setTopBySatId(Long id, Integer top1, String type) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			SatColumnContent columnContent = satColumnContentDao.findById(id);
+			if (top1 == 1) {
+				// 取消推荐
+				columnContent.setTop(null);
+			} else if (top1 == 0) {
+				// 根据type获取推荐的内容
+				// List<SatColumnContent> satCons =
+				// satColumnContentDao.getSatConByType(type);
+
+				List<SatColumnContent> satCons = satColumnContentDao.getSatConByType();
+				if (satCons != null && satCons.size() > 4) {
+					SatColumnContent columnContent2 = satCons.get(satCons.size() - 1);
+					columnContent2.setTop(null);
+					satColumnContentDao.save(columnContent2);
+				}
+				columnContent.setTop(new Date());
+			}
+
+			satColumnContentDao.save(columnContent);
+			returnMsg.setList(null);
+			returnMsg.setMsg("设置成功！");
+			returnMsg.setSuccess(true);
+			returnMsg.setTotalSize(0);
+		} catch (Exception e) {
+			returnMsg.setList(null);
+			returnMsg.setMsg("异常错误！");
+			returnMsg.setSuccess(false);
+			returnMsg.setTotalSize(0);
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 根据 type获取推荐的内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            type
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月27日
+	 */
+	@RequestMapping(value = "/getSatConByTop")
+	public Object getSatConByTop(String type) {
+		ReturnMsg returnMsg = new ReturnMsg();
+
+		try {
+			// List<SatColumnContent> satCons =
+			// satColumnContentDao.getSatConByType(type); //根据type分类获取
+			List<SatColumnContent> satCons = satColumnContentDao.getSatConByType();
+			if (!satCons.isEmpty()) {
+				for (SatColumnContent satColumnContent : satCons) {
+					User user = userDao.findById(satColumnContent.getUserId());
+					if (!MyTools.isEmpty(user)) {
+						satColumnContent.setUserName(user.getNickName());
+						satColumnContent.setUserImg(user.getImg());
+					}
+				}
+			}
+			returnMsg.setList(satCons);
+			returnMsg.setMsg("获取成功");
+			returnMsg.setSuccess(true);
+			returnMsg.setTotalSize(satCons.size());
+		} catch (Exception e) {
+			returnMsg.setList(null);
+			returnMsg.setSuccess(false);
+			returnMsg.setTotalSize(0);
+			returnMsg.setMsg("异常错误！");
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 添加删除 特别报导和滚动头条的内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            id 内容id
+	 * @param @param
+	 *            tag
+	 * @param @param
+	 *            type
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月27日
+	 */
+	@RequestMapping(value = "/delTopSatCon")
+	public Object delTopSatCon(@RequestParam("topId") Long id, Integer tag, String type) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			Sort sort = new Sort(Sort.Direction.DESC, "hotDate");
+			SatColumnContent columnContent = satColumnContentDao.findById(id);
+			if (tag != null && tag == 5) {
+
+				if ("2".equals(columnContent.getHot())) {
+					// 是滚动头条展示内容 修改为不是滚动头条展示
+					columnContent.setHot("0");
+					columnContent.setHotDate(null);
+				} else if ("0".equals(columnContent.getHot())) {
+					// 不是滚动头条展示内容 修改为滚动头条展示
+					columnContent.setHot("2");
+					columnContent.setHotDate(new Date());
+					// List<SatColumnContent> columnContents =
+					// satColumnContentDao.findByHotAndType("2", type,
+					// sort);//根据type分类获取
+					List<SatColumnContent> columnContents = satColumnContentDao.findByHot("2", sort);
+					if (columnContents.size() > 5) {
+						// 最先设置的滚动头条
+						SatColumnContent columnContent2 = columnContents.get(columnContents.size() - 1);
+						if (!MyTools.isEmpty(columnContent2)) {
+							columnContent2.setHot("0");
+							columnContent2.setHotDate(null);
+							satColumnContentDao.save(columnContent2);
+						}
+					}
+
+				}
+				satColumnContentDao.save(columnContent);
+				returnMsg.setSuccess(true);
+				returnMsg.setList(null);
+				returnMsg.setTotalSize(0);
+				returnMsg.setMsg("操作成功！");
+				return returnMsg;
+			}
+			if ("1".equals(columnContent.getHot())) {
+				// 是特别报导展示内容 修改为不是特别报导展示
+				columnContent.setHot("0");
+				columnContent.setHotDate(null);
+			} else if ("0".equals(columnContent.getHot())) {
+				// 不是特别报导展示内容 修改为特别报导展示
+				columnContent.setHot("1");
+				columnContent.setHotDate(new Date());
+				// List<SatColumnContent> columnContents =
+				// satColumnContentDao.findByHotAndType("1", type,
+				// sort);//根据type分类获取
+				List<SatColumnContent> columnContents = satColumnContentDao.findByHot("1", sort);
+				if (columnContents.size() > 3) {
+					// 最先设置的特别报导展示内容
+					SatColumnContent columnContent2 = columnContents.get(columnContents.size() - 1);
+					if (!MyTools.isEmpty(columnContent2)) {
+						columnContent2.setHot("0");
+						columnContent2.setHotDate(null);
+						satColumnContentDao.save(columnContent2);
+					}
+				}
+			}
+
+			satColumnContentDao.save(columnContent);
+			returnMsg.setSuccess(true);
+			returnMsg.setList(null);
+			returnMsg.setTotalSize(0);
+			returnMsg.setMsg("操作成功！");
+		} catch (Exception e) {
+			e.printStackTrace();
+			returnMsg.setSuccess(false);
+			returnMsg.setMsg("操作失败！");
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 根据type获取特别报导和滚动头条的内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            type
+	 * @param @param
+	 *            tag
+	 * @param @param
+	 *            hot
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月27日
+	 */
+	@RequestMapping(value = "/getTopSatContent")
+	public Object getTopSatContent(String type, String tag, String hot) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		Sort sort = new Sort(Sort.Direction.DESC, "hotDate");
+		if (!"5".equals(tag)) {
+			tag = "0";
+		}
+		try {
+			// List<SatColumnContent> columnContents =
+			// satColumnContentDao.findByHotAndType(hot, type,
+			// sort);//根据type分类获取
+			List<SatColumnContent> columnContents = satColumnContentDao.findByHot(hot, sort);
+			// 查询内容的作者名
+			for (SatColumnContent columnContent : columnContents) {
+
+				User user = userDao.findById(columnContent.getUserId());
+				if (!MyTools.isEmpty(user)) {
+					columnContent.setUserName(user.getNickName());
+					columnContent.setUserImg(user.getImg());
+				}
+			}
+			returnMsg.setList(columnContents);
+			returnMsg.setSuccess(true);
+			returnMsg.setTotalSize(columnContents.size());
+			returnMsg.setMsg("获取成功！");
+		} catch (Exception e) {
+			returnMsg.setSuccess(false);
+			returnMsg.setMsg("异常错误！");
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+
+	/**
+	 * 模糊搜索所有的内容
+	 * 
+	 * @Description: TODO
+	 * @param @param
+	 *            search_str
+	 * @param @param
+	 *            start
+	 * @param @param
+	 *            limit
+	 * @param @param
+	 *            tag
+	 * @param @return
+	 * @return Object
+	 * @throws @author
+	 *             HD
+	 * @date 2018年6月29日
+	 */
+	@RequestMapping(value = "/fuzzySearchSatCon")
+	public Object fuzzySearchSatCon(@RequestParam("search_str") String search_str, Integer start, Integer limit,
+			String tag) {
+		ReturnMsg returnMsg = new ReturnMsg();
+		try {
+			String tag1 = "";
+			String tag2 = "";
+			if (!"5".equals(tag)) {
+				tag1 = "0";
+				tag2 = "3";
+			}
+			// 分页操作
+			PageRequest pageable = new PageRequest(start, limit);
+			if (!MyTools.isEmpty(search_str)) {
+
+				// 模糊查询精选 热门 各地栏目的内容
+				List<ColumnContent> columnContents2 = columnContentDao.fuzzySearchCon("%" + search_str + "%",
+						start * limit, limit, tag1, tag2);
+				// System.out.println(columnContents2.size() + "start:" + start
+				// + "limit:" + limit);
+				if (!columnContents2.isEmpty()) {
+					for (ColumnContent columnContent : columnContents2) {
+						// 查询内容的作者名
+						AppUser appuser = appUserDao.findById(columnContent.getAppUserId());
+						if (!MyTools.isEmpty(appuser)) {
+							columnContent.setUserName(appuser.getUserName());
+							columnContent.setUserImg(appuser.getUserImg());
+						}
+						User user = userDao.findById(columnContent.getUserId());
+						if (!MyTools.isEmpty(user)) {
+							columnContent.setUserName(user.getNickName());
+							columnContent.setUserImg(user.getImg());
+						}
+						// 获取栏目信息
+						Columns column = columnsDao.findById(columnContent.getColId());
+						String cName = "";
+						if ("0".equals(columnContent.getState()) || "1".equals(columnContent.getState())) {
+							cName = "头条";
+						} else if ("2".equals(columnContent.getState()) || "3".equals(columnContent.getState())) {
+							cName = "发现";
+						}
+						if (!MyTools.isEmpty(column)) {
+							columnContent.setColName(cName + "," + column.getColName());
+						} else {
+							columnContent.setColName(cName);
+						}
+					}
+				}
+				// 模糊搜索前沿和活动下面的内容
+				List<SatColumnContent> satCons = satColumnContentDao.fuzzySearchSatCon("%" + search_str + "%",
+						start * limit, limit);
+				if (!satCons.isEmpty()) {
+					for (SatColumnContent satColumnContent : satCons) {
+						// 查询内容的作者名
+						User user = userDao.findById(satColumnContent.getUserId());
+						if (!MyTools.isEmpty(user)) {
+							satColumnContent.setUserName(user.getNickName());
+							satColumnContent.setUserImg(user.getImg());
+						}
+
+						// 获取栏目信息
+						SatColumn column = satColumnDao.findById(satColumnContent.getColId());
+						String cName = "";
+						if (!MyTools.isEmpty(column)) {
+							if (0 == column.getTag()) {
+								satColumnContent.setColName("前沿 - " + column.getColName());
+							}
+							if (1 == column.getTag()) {
+								satColumnContent.setColName("活动 - " + column.getColName());
+							}
+						}
+					}
+				}
+				if (MyTools.isEmpty(search_str) && satCons.isEmpty()) {
+					returnMsg.setList(null);
+					returnMsg.setMsg("获取失败，不存在这条数据！");
+					returnMsg.setSuccess(true);
+					returnMsg.setTotalSize(0);
+					return returnMsg;
+				}
+
+				if (!satCons.isEmpty()) { // 把两个集合的数据合在一起
+					for (SatColumnContent satColumnContent : satCons) {
+						ColumnContent columnContent3 = new ColumnContent();
+						// MyTools.updateNotNullFieldForPatient(columnContent3,
+						// satColumnContent);
+						// System.out.println(11111);
+						if (!MyTools.isEmpty(satColumnContent.getUserName())) {
+							columnContent3.setUserName(satColumnContent.getUserName());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getUserImg())) {
+							columnContent3.setUserImg(satColumnContent.getUserImg());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getColName())) {
+							columnContent3.setColName(satColumnContent.getColName());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getId())) {
+							columnContent3.setId(satColumnContent.getId());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getColId())) {
+							columnContent3.setColId(satColumnContent.getColId());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConTitle())) {
+							columnContent3.setConTitle(satColumnContent.getConTitle());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConRemark())) {
+							columnContent3.setConRemark(satColumnContent.getConRemark());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConImg())) {
+							columnContent3.setConImg(satColumnContent.getConImg());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConImg1())) {
+							columnContent3.setConImg1(satColumnContent.getConImg1());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConHtml())) {
+							columnContent3.setConHtml(satColumnContent.getConHtml());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConLivePath())) {
+							columnContent3.setConLivePath(satColumnContent.getConLivePath());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getConVideoPath())) {
+							columnContent3.setConVideoPath(satColumnContent.getConVideoPath());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getCreateDate())) {
+							columnContent3.setCreateDate(satColumnContent.getCreateDate());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getPraiseCount())) {
+							columnContent3.setPraiseCount(satColumnContent.getPraiseCount());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getDislikeCount())) {
+							columnContent3.setDislikeCount(satColumnContent.getDislikeCount());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getPlayCount())) {
+							columnContent3.setPlayCount(satColumnContent.getPlayCount());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getExaCount())) {
+							columnContent3.setExaCount(satColumnContent.getExaCount());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getLinkUrl())) {
+							columnContent3.setLinkUrl(satColumnContent.getLinkUrl());
+						}
+
+						if (!MyTools.isEmpty(satColumnContent.getImgUrl())) {
+							columnContent3.setImgUrl(satColumnContent.getImgUrl());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getAppUserId())) {
+							columnContent3.setAppUserId(satColumnContent.getAppUserId());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getUserId())) {
+							columnContent3.setUserId(satColumnContent.getUserId());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getState())) {
+							columnContent3.setState(satColumnContent.getState());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getSort())) {
+							columnContent3.setSort(satColumnContent.getSort());
+						}
+
+						if (!MyTools.isEmpty(satColumnContent.getHot())) {
+							columnContent3.setHot(satColumnContent.getHot());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getHotDate())) {
+							columnContent3.setHotDate(satColumnContent.getHotDate());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getIsPublic())) {
+							columnContent3.setIsPublic(satColumnContent.getIsPublic());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getFollow())) {
+							columnContent3.setFollow(satColumnContent.getFollow());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getType())) {
+							columnContent3.setType(satColumnContent.getType());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getIsFurther())) {
+							columnContent3.setIsFurther(satColumnContent.getIsFurther());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getUserAdImg())) {
+							columnContent3.setUserAdImg(satColumnContent.getUserAdImg());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getBackgroundMusic())) {
+							columnContent3.setBackgroundMusic(satColumnContent.getBackgroundMusic());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getMp3Name())) {
+							columnContent3.setMp3Name(satColumnContent.getMp3Name());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getTop())) {
+							columnContent3.setTop(satColumnContent.getTop());
+						}
+						if (!MyTools.isEmpty(satColumnContent.gethTop())) {
+							columnContent3.sethTop(satColumnContent.gethTop());
+						}
+						if (!MyTools.isEmpty(satColumnContent.gethHot())) {
+							columnContent3.sethHot(satColumnContent.gethHot());
+						}
+						if (!MyTools.isEmpty(satColumnContent.getRedact())) {
+							columnContent3.setRedact(satColumnContent.getRedact());
+						}
+
+						columnContents2.add(columnContent3);
+					}
+				}
+				returnMsg.setList(columnContents2);
+				columnContents2 = columnContentDao.fuzzySearchCon("%" + search_str + "%", tag1, tag2);
+				satCons = satColumnContentDao.fuzzySearchSatCon("%" + search_str + "%");
+				if (columnContents2.isEmpty() && satCons.isEmpty()) {
+					returnMsg.setTotalSize(0);
+				} else if (columnContents2.isEmpty() && !satCons.isEmpty()) {
+					returnMsg.setTotalSize(satCons.size());
+				} else if (!columnContents2.isEmpty() && satCons.isEmpty()) {
+					returnMsg.setTotalSize(columnContents2.size());
+				} else {
+					returnMsg.setTotalSize(columnContents2.size() + satCons.size());
+				}
+
+				returnMsg.setSuccess(true);
+				returnMsg.setMsg("获取成功！");
+				return returnMsg;
+
+			}
+		} catch (Exception e) {
+			returnMsg.setList(null);
+			returnMsg.setMsg("异常错误");
+			returnMsg.setSuccess(false);
+			returnMsg.setTotalSize(0);
+			e.printStackTrace();
+		}
+		return returnMsg;
+	}
+}
